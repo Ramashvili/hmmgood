@@ -9,7 +9,7 @@ It comes with a .desktop entry, mime type, and an icon. This integrates hmmgood 
 
 # Installation
 1. install whiptail and h-m-m
-2. clone hmmgood github repo and run install.sh (sudo is not needed)
+2. on linux: clone hmmgood github repo and run install.sh (sudo is not needed)
 
 Alternatively you can copy files manually to appropriate destinations on your system.
 
