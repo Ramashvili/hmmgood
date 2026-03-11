@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
-  <mime-type type="application/x-hmmgood">
+  <mime-type type="application/x-h-m-m">
     <comment>h-m-m mindmap</comment>
     <glob pattern="*.hmm"/>
     <icon name="hmmgood"/>
