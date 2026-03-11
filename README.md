@@ -13,4 +13,4 @@ It comes with a .desktop entry, mime type, and an icon. This integrates hmmgood 
 
 Alternatively you can copy files manually to appropriate destinations on your system.
 
-Or you can run hmmgood script as is without installation.
+Or you can run hmmgood script as is, without installation.
