@@ -1,8 +1,9 @@
 # What is it?
+## Menu
 A minimalistic TUI menu/launcher for h-m-m mind mapping tool. Thanks to nadrad for creating h-m-m!
 
 ![main menu](screenshot.png)
-
+## Icon
 It comes with a .desktop entry, mime type, and an icon. This integrates hmmgood into a linux system in a standard way. User will now be able to open .hmm files from any file browser.
 
 ![icon](hmmgood.png)
