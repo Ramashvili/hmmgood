@@ -1,0 +1,438 @@
+#!/bin/sh
+
+# ==========================================
+# Global Configuration
+# ==========================================
+HMMGOOD_CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/hmmgood"
+HMMGOOD_CONFIG_FILE="$HMMGOOD_CONFIG_DIR/hmmgood.conf"
+
+# h-m-m has its config directory hardcoded to ~/.config/h-m-m
+HMM_CONFIG_DIR="$HOME/.config/h-m-m"
+HMM_CONFIG_FILE="$HMM_CONFIG_DIR/h-m-m.conf"
+
+DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
+HMMGOOD_DIR="$DATA_HOME/hmmgood" # Fallback directory if config is missing
+
+BACKTITLE="hmmgood: menu for h-m-m mind maps"
+TARGET_FILE=""
+CHOICE=""
+NEW_FILE=""
+DEL_CHOICES=""
+
+# ==========================================
+# Dependency Check
+# ==========================================
+check_dependencies() {
+    DEPS_OK=true
+
+    command -v h-m-m    >/dev/null 2>&1 || { echo "Error: h-m-m is not installed. Please install it from the nadrad/h-m-m repository on GitHub."; DEPS_OK=false; }
+    command -v whiptail >/dev/null 2>&1 || { echo "Error: whiptail is not installed. Please install it using your package manager."; DEPS_OK=false; }
+
+    [ "$DEPS_OK" = false ] && exit 1
+}
+
+# ==========================================
+# File System & Environment Functions
+# ==========================================
+
+setup_theme() {
+    export NEWT_COLORS='
+        root=white,black
+        border=brown,black
+        window=lightgray,black
+        shadow=gray,black
+        title=yellow,black
+        button=black,brown
+        actbutton=white,brown
+        compactbutton=brown,black
+        checkbox=gray,black
+        actcheckbox=black,brown
+        entry=black,gray
+        disentry=black,brown
+        label=white,black
+        listbox=gray,black
+        actlistbox=black,gray
+        sellistbox=lightgray,green
+        actsellistbox=black,brown
+        textbox=white,black
+        acttextbox=black,cyan
+        emptyscale=,gray
+        fullscale=,brown
+        helpline=white,black
+        roottext=lightgrey,black
+    '
+}
+
+init_environment() {
+    # Source the hmmgood config file to load HMMGOOD_DIR if it exists
+    if [ -r "$HMMGOOD_CONFIG_FILE" ]; then
+        . "$HMMGOOD_CONFIG_FILE"
+    fi
+    mkdir -p "$HMMGOOD_DIR"
+}
+
+exit_gracefully() {
+    clear
+    echo "hmmgood closed."
+    exit 0
+}
+
+launch_application() {
+    clear
+    h-m-m "$TARGET_FILE"
+}
+
+# ==========================================
+# Configuration Management
+# ==========================================
+
+handle_edit_config() {
+    CONFIG_CHOICE=$(whiptail --backtitle "$BACKTITLE" \
+                      --title " Edit Configuration " \
+                      --menu "Select a configuration file to edit:" 12 60 2 \
+                      "1" "hmmgood (Launcher settings)" \
+                      "2" "h-m-m (Mind map editor settings)" \
+                      3>&1 1>&2 2>&3)
+
+    if [ $? -ne 0 ]; then
+        return
+    fi
+    
+    clear
+
+    # Determine the user's preferred terminal text editor
+    EDITOR_CMD="${VISUAL:-${EDITOR:-nano}}"
+    
+    # Fallback to vi if neither VISUAL, EDITOR, or nano are available
+    if ! command -v "$EDITOR_CMD" >/dev/null 2>&1; then
+        EDITOR_CMD="vi"
+    fi
+
+    case "$CONFIG_CHOICE" in
+        1)
+            # Create the hmmgood config file with defaults if it does not exist
+            if [ ! -f "$HMMGOOD_CONFIG_FILE" ]; then
+                mkdir -p "$HMMGOOD_CONFIG_DIR"
+                # Using unquoted EOF so variables expand to absolute paths currently in use
+                cat << EOF > "$HMMGOOD_CONFIG_FILE"
+# hmmgood configuration file
+# This file sets the directory where your mind maps (.hmm files) will be stored.
+# You can change the path below to your preferred location.
+
+HMMGOOD_DIR="$HMMGOOD_DIR"
+EOF
+            fi
+            
+            # Open the config file
+            "$EDITOR_CMD" "$HMMGOOD_CONFIG_FILE"
+            
+            # Re-read the config file to apply any changes instantly
+            init_environment
+            ;;
+        2)
+            # Create the h-m-m config file with defaults if it does not exist
+            if [ ! -f "$HMM_CONFIG_FILE" ]; then
+                mkdir -p "$HMM_CONFIG_DIR"
+                # Using quoted 'EOF' to prevent shell expansion of the \033 escape sequences
+                cat << 'EOF' > "$HMM_CONFIG_FILE"
+max_parent_node_width = 25
+max_leaf_node_width = 55
+line_spacing = 1
+initial_depth = 6
+center_lock = false
+symbol1 = ✓
+symbol2 = ✗
+EOF
+            fi
+
+            # Open the h-m-m config file
+            "$EDITOR_CMD" "$HMM_CONFIG_FILE"
+            ;;
+    esac
+}
+
+# ==========================================
+# Main Menu Selection
+# ==========================================
+
+show_main_menu() {
+    set -- "[ Create New File ]" "Start a blank mind map"
+    set -- "$@" "  " ""
+
+    # Append existing .hmm files
+    for file in "$HMMGOOD_DIR"/*.hmm; do
+        if [ -f "$file" ]; then
+            FILENAME=$(basename -- "$file")
+            MTIME=$(date -r "$file" "+%Y-%m-%d %H:%M" 2>/dev/null || ls -ld -- "$file" | awk '{print $6, $7, $8}')
+            set -- "$@" "$FILENAME" "$MTIME"
+        fi
+    done
+
+    # Visual separators before management options
+    set -- "$@" " " ""
+
+    # Options added to the bottom
+    set -- "$@" "[ Rename File ]" "Rename an existing mind map"
+    set -- "$@" "[ Trash Files ]" "Select mind maps to trash"
+    set -- "$@" "[ Edit Config ]" "Open config file in default editor"
+
+    CHOICE=$(whiptail --backtitle "$BACKTITLE" \
+                      --title " Main Menu " \
+                      --ok-button " Confirm " \
+                      --cancel-button " Exit " \
+                      --menu "Navigate with arrows, Tab, Enter " 0 70 0 \
+                      "$@" \
+                      3>&1 1>&2 2>&3)
+
+    if [ $? -ne 0 ]; then
+        exit_gracefully
+    fi
+}
+
+# ==========================================
+# File Creation
+# ==========================================
+
+prompt_new_filename() {
+    NEW_FILE=$(whiptail --backtitle "$BACKTITLE" \
+                        --title " Create New Map " \
+                        --ok-button " Confirm " \
+                        --cancel-button " Back " \
+                        --inputbox "Enter a name for the new mind map:" 10 60 \
+                        3>&1 1>&2 2>&3)
+
+    if [ $? -ne 0 ] || [ -z "$NEW_FILE" ]; then
+        return 1
+    fi
+
+    case "$NEW_FILE" in
+        *.hmm) TARGET_FILE="$HMMGOOD_DIR/$NEW_FILE" ;;
+        *)     TARGET_FILE="$HMMGOOD_DIR/$NEW_FILE.hmm" ;;
+    esac
+
+    return 0
+}
+
+# ==========================================
+# Renaming Functions
+# ==========================================
+
+select_file_to_rename() {
+    set --
+    FILE_COUNT=0
+
+    for file in "$HMMGOOD_DIR"/*.hmm; do
+        if [ -f "$file" ]; then
+            FILENAME=$(basename -- "$file")
+            MTIME=$(date -r "$file" "+%Y-%m-%d %H:%M" 2>/dev/null || ls -ld -- "$file" | awk '{print $6, $7, $8}')
+            set -- "$@" "$FILENAME" "$MTIME"
+            FILE_COUNT=$((FILE_COUNT + 1))
+        fi
+    done
+
+    if [ "$FILE_COUNT" -eq 0 ]; then
+        whiptail --backtitle "$BACKTITLE" \
+                 --title " Folder Empty " \
+                 --ok-button " Back " \
+                 --msgbox "There are no mind maps available to rename." 8 60
+        return 1
+    fi
+
+    FILE_TO_RENAME=$(whiptail --backtitle "$BACKTITLE" \
+                             --title " Rename File " \
+                             --ok-button " Confirm " \
+                             --cancel-button " Back " \
+                             --menu "Select a mind map to rename:" 0 70 0 \
+                             "$@" \
+                             3>&1 1>&2 2>&3)
+
+    if [ $? -ne 0 ]; then
+        return 1
+    fi
+
+    return 0
+}
+
+get_new_filename() {
+    NEW_NAME=$(whiptail --backtitle "$BACKTITLE" \
+                           --title " Rename File " \
+                           --ok-button " Confirm " \
+                           --cancel-button " Back " \
+                           --inputbox "Enter the new name for '$FILE_TO_RENAME':" 10 70 "${FILE_TO_RENAME%.hmm}" \
+                           3>&1 1>&2 2>&3)
+
+    if [ $? -ne 0 ] || [ -z "$NEW_NAME" ]; then
+        return 1
+    fi
+
+    case "$NEW_NAME" in
+        *.hmm) FINAL_NEW_NAME="$NEW_NAME" ;;
+        *)     FINAL_NEW_NAME="$NEW_NAME.hmm" ;;
+    esac
+
+    return 0
+}
+
+perform_rename() {
+    if [ -f "$HMMGOOD_DIR/$FINAL_NEW_NAME" ] && [ "$FILE_TO_RENAME" != "$FINAL_NEW_NAME" ]; then
+        whiptail --backtitle "$BACKTITLE" \
+                 --title " Error " \
+                 --ok-button " Back " \
+                 --msgbox "A file named '$FINAL_NEW_NAME' already exists." 8 60
+        return 1
+    fi
+
+    mv -- "$HMMGOOD_DIR/$FILE_TO_RENAME" "$HMMGOOD_DIR/$FINAL_NEW_NAME"
+
+    whiptail --backtitle "$BACKTITLE" \
+             --title " Success " \
+             --ok-button " Back " \
+             --msgbox "File successfully renamed to '$FINAL_NEW_NAME'." 8 60
+
+    return 0
+}
+
+handle_renaming() {
+    FILE_TO_RENAME=""
+    NEW_NAME=""
+    FINAL_NEW_NAME=""
+
+    select_file_to_rename || return
+    get_new_filename || return
+    perform_rename
+}
+
+# ==========================================
+# Trashing Functions
+# ==========================================
+
+check_trash_dependency() {
+    if ! command -v trash >/dev/null 2>&1; then
+        whiptail --backtitle "$BACKTITLE" \
+                 --title " Missing Dependency " \
+                 --ok-button " Back " \
+                 --msgbox "The 'trash' command was not found.\n\nPlease install it (e.g., 'sudo apt install trash-cli') to use this feature." 10 60
+        return 1
+    fi
+    return 0
+}
+
+select_files_to_trash() {
+    set --
+    FILE_COUNT=0
+
+    for file in "$HMMGOOD_DIR"/*.hmm; do
+        if [ -f "$file" ]; then
+            FILENAME=$(basename -- "$file")
+            MTIME=$(date -r "$file" "+%Y-%m-%d %H:%M" 2>/dev/null || ls -ld -- "$file" | awk '{print $6, $7, $8}')
+            set -- "$@" "$FILENAME" "$MTIME" "OFF"
+            FILE_COUNT=$((FILE_COUNT + 1))
+        fi
+    done
+
+    if [ "$FILE_COUNT" -eq 0 ]; then
+        whiptail --backtitle "$BACKTITLE" \
+                 --title " Folder Empty " \
+                 --ok-button " Back " \
+                 --msgbox "There are no mind maps currently available to trash." 8 60
+        return 1
+    fi
+
+    DEL_CHOICES=$(whiptail --backtitle "$BACKTITLE" \
+                           --title " Trash Maps " \
+                           --ok-button " Confirm " \
+                           --cancel-button " Back " \
+                           --checklist "Space to select, Enter to confirm:" 0 70 0 \
+                           "$@" \
+                           3>&1 1>&2 2>&3)
+
+    if [ $? -ne 0 ]; then
+        return 1
+    fi
+
+    if [ -z "$DEL_CHOICES" ]; then
+        whiptail --backtitle "$BACKTITLE" \
+                 --title " No Selection " \
+                 --ok-button " Back " \
+                 --msgbox "No files were selected." 8 40
+        return 1
+    fi
+
+    return 0
+}
+
+confirm_and_delete_files() {
+    eval "set -- $DEL_CHOICES"
+    SELECTED_COUNT=$#
+
+    whiptail --backtitle "$BACKTITLE" \
+             --title " Confirm Trashing " \
+             --yes-button " Confirm " \
+             --no-button " Back " \
+             --yesno "Are you sure you want to move $SELECTED_COUNT selected file(s) to the system trash?" 8 60
+
+    if [ $? -eq 0 ]; then
+        for DEL_CHOICE in "$@"; do
+            trash -- "$HMMGOOD_DIR/$DEL_CHOICE"
+        done
+
+        whiptail --backtitle "$BACKTITLE" \
+                 --title " Success " \
+                 --ok-button " Back " \
+                 --msgbox "$SELECTED_COUNT file(s) have been moved to the trash." 8 50
+        return 0
+    fi
+
+    return 1
+}
+
+handle_deletion() {
+    check_trash_dependency || return
+
+    while true; do
+        select_files_to_trash || return
+
+        if confirm_and_delete_files; then
+            return
+        fi
+    done
+}
+
+# ==========================================
+# Main Execution Flow
+# ==========================================
+main() {
+    check_dependencies
+
+    # If any arguments are passed to the script, launch h-m-m directly
+    if [ "$#" -gt 0 ]; then
+        exec h-m-m "$@"
+    fi
+
+    setup_theme
+    init_environment
+
+    while true; do
+        show_main_menu
+
+        if [ "$CHOICE" = "[ Create New File ]" ]; then
+            if prompt_new_filename; then
+                launch_application
+            fi
+        elif [ "$CHOICE" = "[ Rename File ]" ]; then
+            handle_renaming
+        elif [ "$CHOICE" = "[ Trash Files ]" ]; then
+            handle_deletion
+        elif [ "$CHOICE" = "[ Edit Config ]" ]; then
+            handle_edit_config
+        elif [ "$CHOICE" = " " ] || [ "$CHOICE" = "  " ]; then
+            continue
+        else
+            TARGET_FILE="$HMMGOOD_DIR/$CHOICE"
+            launch_application
+        fi
+    done
+}
+
+# Pass all incoming arguments to main
+main "$@"

@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=hmmgood
+Comment=TUI menu/launcher for h-m-m mind maps
+Exec=hmmgood %f
+Terminal=true
+Icon=hmmgood
+Categories=Office;Development;
+Keywords=Mind;Mapping;Notes;
+MimeType=application/x-h-m-m;
