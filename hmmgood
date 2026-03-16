@@ -1,8 +1,5 @@
 #!/bin/sh
 
-# ==========================================
-# Global Configuration
-# ==========================================
 HMMGOOD_CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/hmmgood"
 HMMGOOD_CONFIG_FILE="$HMMGOOD_CONFIG_DIR/hmmgood.conf"
 
@@ -19,9 +16,6 @@ CHOICE=""
 NEW_FILE=""
 DEL_CHOICES=""
 
-# ==========================================
-# Dependency Check
-# ==========================================
 check_dependencies() {
     DEPS_OK=true
 
@@ -30,10 +24,6 @@ check_dependencies() {
 
     [ "$DEPS_OK" = false ] && exit 1
 }
-
-# ==========================================
-# File System & Environment Functions
-# ==========================================
 
 setup_theme() {
     export NEWT_COLORS='
@@ -64,7 +54,6 @@ setup_theme() {
 }
 
 init_environment() {
-    # Source the hmmgood config file to load HMMGOOD_DIR if it exists
     if [ -r "$HMMGOOD_CONFIG_FILE" ]; then
         . "$HMMGOOD_CONFIG_FILE"
     fi
@@ -82,10 +71,6 @@ launch_application() {
     h-m-m "$TARGET_FILE"
 }
 
-# ==========================================
-# Configuration Management
-# ==========================================
-
 handle_edit_config() {
     CONFIG_CHOICE=$(whiptail --backtitle "$BACKTITLE" \
                       --title " Edit Configuration " \
@@ -97,12 +82,12 @@ handle_edit_config() {
     if [ $? -ne 0 ]; then
         return
     fi
-    
+
     clear
 
     # Determine the user's preferred terminal text editor
     EDITOR_CMD="${VISUAL:-${EDITOR:-nano}}"
-    
+
     # Fallback to vi if neither VISUAL, EDITOR, or nano are available
     if ! command -v "$EDITOR_CMD" >/dev/null 2>&1; then
         EDITOR_CMD="vi"
@@ -122,10 +107,10 @@ handle_edit_config() {
 HMMGOOD_DIR="$HMMGOOD_DIR"
 EOF
             fi
-            
+
             # Open the config file
             "$EDITOR_CMD" "$HMMGOOD_CONFIG_FILE"
-            
+
             # Re-read the config file to apply any changes instantly
             init_environment
             ;;
@@ -145,19 +130,14 @@ symbol2 = ✗
 EOF
             fi
 
-            # Open the h-m-m config file
             "$EDITOR_CMD" "$HMM_CONFIG_FILE"
             ;;
     esac
 }
 
-# ==========================================
-# Main Menu Selection
-# ==========================================
-
 show_main_menu() {
     set -- "[ Create New File ]" "Start a blank mind map"
-    set -- "$@" "  " ""
+    set -- "$@" "  " "" # Visual separator
 
     # Append existing .hmm files
     for file in "$HMMGOOD_DIR"/*.hmm; do
@@ -168,10 +148,8 @@ show_main_menu() {
         fi
     done
 
-    # Visual separators before management options
-    set -- "$@" " " ""
+    set -- "$@" " " ""  # Visual separator
 
-    # Options added to the bottom
     set -- "$@" "[ Rename File ]" "Rename an existing mind map"
     set -- "$@" "[ Trash Files ]" "Select mind maps to trash"
     set -- "$@" "[ Edit Config ]" "Open config file in default editor"
@@ -188,10 +166,6 @@ show_main_menu() {
         exit_gracefully
     fi
 }
-
-# ==========================================
-# File Creation
-# ==========================================
 
 prompt_new_filename() {
     NEW_FILE=$(whiptail --backtitle "$BACKTITLE" \
@@ -212,10 +186,6 @@ prompt_new_filename() {
 
     return 0
 }
-
-# ==========================================
-# Renaming Functions
-# ==========================================
 
 select_file_to_rename() {
     set --
@@ -301,10 +271,6 @@ handle_renaming() {
     get_new_filename || return
     perform_rename
 }
-
-# ==========================================
-# Trashing Functions
-# ==========================================
 
 check_trash_dependency() {
     if ! command -v trash >/dev/null 2>&1; then
@@ -398,13 +364,9 @@ handle_deletion() {
     done
 }
 
-# ==========================================
-# Main Execution Flow
-# ==========================================
 main() {
     check_dependencies
 
-    # If any arguments are passed to the script, launch h-m-m directly
     if [ "$#" -gt 0 ]; then
         exec h-m-m "$@"
     fi
@@ -434,5 +396,4 @@ main() {
     done
 }
 
-# Pass all incoming arguments to main
 main "$@"
