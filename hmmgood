@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/usr/bin/env bash
 
 HMMGOOD_CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/hmmgood"
 HMMGOOD_CONFIG_FILE="$HMMGOOD_CONFIG_DIR/hmmgood.conf"
@@ -16,14 +16,7 @@ CHOICE=""
 NEW_FILE=""
 DEL_CHOICES=""
 
-check_dependencies() {
-    DEPS_OK=true
-
-    command -v h-m-m    >/dev/null 2>&1 || { echo "Error: h-m-m is not installed. Please install it from the nadrad/h-m-m repository on GitHub."; DEPS_OK=false; }
-    command -v whiptail >/dev/null 2>&1 || { echo "Error: whiptail is not installed. Please install it using your package manager."; DEPS_OK=false; }
-
-    [ "$DEPS_OK" = false ] && exit 1
-}
+ALL_MAPS=()
 
 setup_theme() {
     export NEWT_COLORS='
@@ -51,6 +44,20 @@ setup_theme() {
         helpline=white,black
         roottext=lightgrey,black
     '
+}
+
+find_maps() {
+    shopt -s globstar
+    ALL_MAPS=( "$HMMGOOD_DIR"/**/*.hmm )
+}
+
+check_dependencies() {
+    DEPS_OK=true
+
+    command -v h-m-m    >/dev/null 2>&1 || { echo "Error: h-m-m is not installed. Please install it from the nadrad/h-m-m repository on GitHub."; DEPS_OK=false; }
+    command -v whiptail >/dev/null 2>&1 || { echo "Error: whiptail is not installed. Please install it using your package manager."; DEPS_OK=false; }
+
+    [ "$DEPS_OK" = false ] && exit 1
 }
 
 init_environment() {
@@ -139,13 +146,11 @@ show_main_menu() {
     set -- "[ Create New File ]" "Start a blank mind map"
     set -- "$@" "  " "" # Visual separator
 
-    # Append existing .hmm files
-    for file in "$HMMGOOD_DIR"/*.hmm; do
-        if [ -f "$file" ]; then
-            FILENAME=$(basename -- "$file")
-            MTIME=$(date -r "$file" "+%Y-%m-%d %H:%M" 2>/dev/null || ls -ld -- "$file" | awk '{print $6, $7, $8}')
-            set -- "$@" "$FILENAME" "$MTIME"
-        fi
+    find_maps
+    for file in "${ALL_MAPS[@]}"; do
+        FILENAME=$(realpath --relative-base="$HMMGOOD_DIR" "$file")
+        MTIME=$(date -r "$file" "+%Y-%m-%d %H:%M" 2>/dev/null || ls -ld -- "$file" | awk '{print $6, $7, $8}')
+        set -- "$@" "$FILENAME" "      $MTIME"
     done
 
     set -- "$@" " " ""  # Visual separator
@@ -191,13 +196,12 @@ select_file_to_rename() {
     set --
     FILE_COUNT=0
 
-    for file in "$HMMGOOD_DIR"/*.hmm; do
-        if [ -f "$file" ]; then
-            FILENAME=$(basename -- "$file")
-            MTIME=$(date -r "$file" "+%Y-%m-%d %H:%M" 2>/dev/null || ls -ld -- "$file" | awk '{print $6, $7, $8}')
-            set -- "$@" "$FILENAME" "$MTIME"
-            FILE_COUNT=$((FILE_COUNT + 1))
-        fi
+    find_maps
+    for file in "${ALL_MAPS[@]}"; do
+        FILENAME=$(realpath --relative-base="$HMMGOOD_DIR" "$file")
+        MTIME=$(date -r "$file" "+%Y-%m-%d %H:%M" 2>/dev/null || ls -ld -- "$file" | awk '{print $6, $7, $8}')
+        set -- "$@" "$FILENAME" "   $MTIME"
+        FILE_COUNT=$((FILE_COUNT + 1))
     done
 
     if [ "$FILE_COUNT" -eq 0 ]; then
@@ -287,13 +291,12 @@ select_files_to_trash() {
     set --
     FILE_COUNT=0
 
-    for file in "$HMMGOOD_DIR"/*.hmm; do
-        if [ -f "$file" ]; then
-            FILENAME=$(basename -- "$file")
-            MTIME=$(date -r "$file" "+%Y-%m-%d %H:%M" 2>/dev/null || ls -ld -- "$file" | awk '{print $6, $7, $8}')
-            set -- "$@" "$FILENAME" "$MTIME" "OFF"
-            FILE_COUNT=$((FILE_COUNT + 1))
-        fi
+    find_maps
+    for file in "${ALL_MAPS[@]}"; do
+        FILENAME=$(realpath --relative-base="$HMMGOOD_DIR" "$file")
+        MTIME=$(date -r "$file" "+%Y-%m-%d %H:%M" 2>/dev/null || ls -ld -- "$file" | awk '{print $6, $7, $8}')
+        set -- "$@" "$FILENAME" "   $MTIME" "OFF"
+        FILE_COUNT=$((FILE_COUNT + 1))
     done
 
     if [ "$FILE_COUNT" -eq 0 ]; then
