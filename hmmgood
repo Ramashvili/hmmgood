@@ -8,7 +8,8 @@ HMM_CONFIG_DIR="$HOME/.config/h-m-m"
 HMM_CONFIG_FILE="$HMM_CONFIG_DIR/h-m-m.conf"
 
 DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
-HMMGOOD_DIR="$DATA_HOME/hmmgood" # Fallback directory if config is missing
+HMMGOOD_DIR_SEARCH_IN="$DATA_HOME/hmmgood" # Fallback directory if config is missing
+HMMGOOD_DIR_NEWMAPS="$HMMGOOD_DIR_SEARCH_IN"
 
 BACKTITLE="hmmgood: menu for h-m-m mind maps"
 TARGET_FILE=""
@@ -16,7 +17,7 @@ CHOICE=""
 NEW_FILE=""
 DEL_CHOICES=""
 
-ALL_MAPS=()
+declare -a ALL_MAPS=()
 
 setup_theme() {
     export NEWT_COLORS='
@@ -46,9 +47,21 @@ setup_theme() {
     '
 }
 
+init_environment() {
+    if [ -r "$HMMGOOD_CONFIG_FILE" ]; then
+        . "$HMMGOOD_CONFIG_FILE"
+    fi
+    mkdir -p "$HMMGOOD_DIR_SEARCH_IN"
+}
+
 find_maps() {
     shopt -s globstar
-    ALL_MAPS=( "$HMMGOOD_DIR"/**/*.hmm )
+
+#    ALL_MAPS=( "$(find "$HMMGOOD_DIR_SEARCH_IN" -type f -iname "*.hmm")" )
+    ALL_MAPS=( "$HMMGOOD_DIR_SEARCH_IN"/**/*.hmm )
+
+#    for aa in "${ALL_MAPS[@]}"; do echo "$aa"; done
+#    exit
 }
 
 check_dependencies() {
@@ -60,15 +73,8 @@ check_dependencies() {
     [ "$DEPS_OK" = false ] && exit 1
 }
 
-init_environment() {
-    if [ -r "$HMMGOOD_CONFIG_FILE" ]; then
-        . "$HMMGOOD_CONFIG_FILE"
-    fi
-    mkdir -p "$HMMGOOD_DIR"
-}
 
 exit_gracefully() {
-    clear
     echo "hmmgood closed."
     exit 0
 }
@@ -108,10 +114,13 @@ handle_edit_config() {
                 # Using unquoted EOF so variables expand to absolute paths currently in use
                 cat << EOF > "$HMMGOOD_CONFIG_FILE"
 # hmmgood configuration file
-# This file sets the directory where your mind maps (.hmm files) will be stored.
-# You can change the path below to your preferred location.
+# This file sets the directory where your mind maps (.hmm files) will be read from, and saved to.
 
-HMMGOOD_DIR="$HMMGOOD_DIR"
+# display all mind maps from here in the menu
+HMMGOOD_DIR_SEARCH_IN="$HMMGOOD_DIR_SEARCH_IN"
+
+# save new mind maps to this location. It should be the same, or a subdirectory of the above. Otherwise new files will not show up in the menu.
+HMMGOOD_DIR_NEWMAPS="$HMMGOOD_DIR_SEARCH_IN"
 EOF
             fi
 
@@ -148,9 +157,11 @@ show_main_menu() {
 
     find_maps
     for file in "${ALL_MAPS[@]}"; do
-        FILENAME=$(realpath --relative-base="$HMMGOOD_DIR" "$file")
-        MTIME=$(date -r "$file" "+%Y-%m-%d %H:%M" 2>/dev/null || ls -ld -- "$file" | awk '{print $6, $7, $8}')
-        set -- "$@" "$FILENAME" "      $MTIME"
+        if [ -f "$file" ]; then
+            FILENAME=$(realpath --relative-base="$HMMGOOD_DIR_SEARCH_IN" "$file")
+            MTIME=$(date -r "$file" "+%Y-%m-%d %H:%M" 2>/dev/null || ls -ld -- "$file" | awk '{print $6, $7, $8}')
+            set -- "$@" "$FILENAME" "      $MTIME"
+        fi
     done
 
     set -- "$@" " " ""  # Visual separator
@@ -185,8 +196,8 @@ prompt_new_filename() {
     fi
 
     case "$NEW_FILE" in
-        *.hmm) TARGET_FILE="$HMMGOOD_DIR/$NEW_FILE" ;;
-        *)     TARGET_FILE="$HMMGOOD_DIR/$NEW_FILE.hmm" ;;
+        *.hmm) TARGET_FILE="$HMMGOOD_DIR_NEWMAPS/$NEW_FILE" ;;
+        *)     TARGET_FILE="$HMMGOOD_DIR_NEWMAPS/$NEW_FILE.hmm" ;;
     esac
 
     return 0
@@ -198,10 +209,12 @@ select_file_to_rename() {
 
     find_maps
     for file in "${ALL_MAPS[@]}"; do
-        FILENAME=$(realpath --relative-base="$HMMGOOD_DIR" "$file")
-        MTIME=$(date -r "$file" "+%Y-%m-%d %H:%M" 2>/dev/null || ls -ld -- "$file" | awk '{print $6, $7, $8}')
-        set -- "$@" "$FILENAME" "   $MTIME"
-        FILE_COUNT=$((FILE_COUNT + 1))
+        if [ -f "$file" ]; then
+            FILENAME=$(realpath --relative-base="$HMMGOOD_DIR_SEARCH_IN" "$file")
+            MTIME=$(date -r "$file" "+%Y-%m-%d %H:%M" 2>/dev/null || ls -ld -- "$file" | awk '{print $6, $7, $8}')
+            set -- "$@" "$FILENAME" "   $MTIME"
+            FILE_COUNT=$((FILE_COUNT + 1))
+        fi
     done
 
     if [ "$FILE_COUNT" -eq 0 ]; then
@@ -248,7 +261,7 @@ get_new_filename() {
 }
 
 perform_rename() {
-    if [ -f "$HMMGOOD_DIR/$FINAL_NEW_NAME" ] && [ "$FILE_TO_RENAME" != "$FINAL_NEW_NAME" ]; then
+    if [ -f "$HMMGOOD_DIR_SEARCH_IN/$FINAL_NEW_NAME" ] && [ "$FILE_TO_RENAME" != "$FINAL_NEW_NAME" ]; then
         whiptail --backtitle "$BACKTITLE" \
                  --title " Error " \
                  --ok-button " Back " \
@@ -256,7 +269,7 @@ perform_rename() {
         return 1
     fi
 
-    mv -- "$HMMGOOD_DIR/$FILE_TO_RENAME" "$HMMGOOD_DIR/$FINAL_NEW_NAME"
+    mv -- "$HMMGOOD_DIR_SEARCH_IN/$FILE_TO_RENAME" "$HMMGOOD_DIR_SEARCH_IN/$FINAL_NEW_NAME"
 
     whiptail --backtitle "$BACKTITLE" \
              --title " Success " \
@@ -293,10 +306,12 @@ select_files_to_trash() {
 
     find_maps
     for file in "${ALL_MAPS[@]}"; do
-        FILENAME=$(realpath --relative-base="$HMMGOOD_DIR" "$file")
-        MTIME=$(date -r "$file" "+%Y-%m-%d %H:%M" 2>/dev/null || ls -ld -- "$file" | awk '{print $6, $7, $8}')
-        set -- "$@" "$FILENAME" "   $MTIME" "OFF"
-        FILE_COUNT=$((FILE_COUNT + 1))
+        if [ -f "$file" ]; then
+            FILENAME=$(realpath --relative-base="$HMMGOOD_DIR_SEARCH_IN" "$file")
+            MTIME=$(date -r "$file" "+%Y-%m-%d %H:%M" 2>/dev/null || ls -ld -- "$file" | awk '{print $6, $7, $8}')
+            set -- "$@" "$FILENAME" "   $MTIME" "OFF"
+            FILE_COUNT=$((FILE_COUNT + 1))
+        fi
     done
 
     if [ "$FILE_COUNT" -eq 0 ]; then
@@ -342,7 +357,7 @@ confirm_and_delete_files() {
 
     if [ $? -eq 0 ]; then
         for DEL_CHOICE in "$@"; do
-            trash -- "$HMMGOOD_DIR/$DEL_CHOICE"
+            trash -- "$HMMGOOD_DIR_SEARCH_IN/$DEL_CHOICE"
         done
 
         whiptail --backtitle "$BACKTITLE" \
@@ -393,7 +408,7 @@ main() {
         elif [ "$CHOICE" = " " ] || [ "$CHOICE" = "  " ]; then
             continue
         else
-            TARGET_FILE="$HMMGOOD_DIR/$CHOICE"
+            TARGET_FILE="$HMMGOOD_DIR_SEARCH_IN/$CHOICE"
             launch_application
         fi
     done
